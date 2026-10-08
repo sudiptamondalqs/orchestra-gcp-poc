@@ -1,6 +1,0 @@
-- uses: orchestra-hq/run-pipeline@v1
-        with:
-          api_key: ${{ secrets.ORCHESTRA_API_KEY }}
-          pipeline_id: <from the import step below>
-          poll_interval: 20
-          run_inputs: '{"country": "Ghana", "year": "2024"}'

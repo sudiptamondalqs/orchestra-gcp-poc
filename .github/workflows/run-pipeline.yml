@@ -1,0 +1,46 @@
+name: Run WGC reported-volume pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      country:
+        description: Country to load
+        required: true
+        default: Ghana
+        type: string
+      year:
+        description: Year to load
+        required: true
+        default: '2024'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-pipeline:
+    name: Run Orchestra pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check required repository settings
+        env:
+          ORCHESTRA_PIPELINE_ID: ${{ vars.ORCHESTRA_PIPELINE_ID }}
+          ORCHESTRA_API_KEY: ${{ secrets.ORCHESTRA_API_KEY }}
+        run: |
+          if [ -z "$ORCHESTRA_PIPELINE_ID" ]; then
+            echo "::error::Set the ORCHESTRA_PIPELINE_ID repository variable to the imported pipeline UUID."
+            exit 1
+          fi
+          if [ -z "$ORCHESTRA_API_KEY" ]; then
+            echo "::error::Set the ORCHESTRA_API_KEY repository secret."
+            exit 1
+          fi
+
+      - name: Run pipeline
+        uses: orchestra-hq/run-pipeline@v1
+        with:
+          api_key: ${{ secrets.ORCHESTRA_API_KEY }}
+          pipeline_id: ${{ vars.ORCHESTRA_PIPELINE_ID }}
+          poll_interval: 20
+          run_inputs: '{"country": "${{ inputs.country }}", "year": "${{ inputs.year }}"}'

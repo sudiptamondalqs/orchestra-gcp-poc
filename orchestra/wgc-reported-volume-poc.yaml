@@ -263,6 +263,28 @@ pipeline:
 
   checks_group:
     tasks:
+      qa_summary:
+        integration: PYTHON
+        integration_job: PYTHON_EXECUTE_SCRIPT
+        parameters:
+          source: GIT
+          command: python -m wgc_poc.qa_summary
+          project_dir: python
+          package_manager: PIP
+          python_version: '3.12'
+          build_command: pip install -r requirements.txt
+          set_outputs: true
+          environment_variables: |
+            {
+              "BQ_CONNECTION_ID": "orchestra_gcp_52611",
+              "BQ_DATASET": "wgc_reported_volumes_poc",
+              "SOURCE_COUNTRY": "${{ inputs.country }}",
+              "SOURCE_YEAR": "${{ inputs.year }}"
+            }
+        depends_on: []
+        name: QA summary for both loads
+        connection: python_wgc_70839
+
       dq_no_null_qty:
         integration: GCP_BIG_QUERY
         integration_job: GCP_BQ_RUN_TEST

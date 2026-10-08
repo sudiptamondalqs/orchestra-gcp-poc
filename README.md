@@ -5,15 +5,18 @@ the WGC reported-volumes CSV from Cloud Storage into BigQuery. The load runs
 twice: once as native BigQuery SQL and once as a Python task. The pipeline
 then checks that both produce the same rows.
 
+See the [pipeline handoff](./docs/WGC_REPORTED_VOLUME_PIPELINE.md) for the flow,
+current status, and next steps.
+
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | [`orchestra/wgc-reported-volume-poc.yaml`](./orchestra/wgc-reported-volume-poc.yaml) | Orchestra pipeline definition |
-| [`python/wgc_poc/qa_summary.py`](./python/wgc_poc/qa_summary.py) | Standalone post-load QA summary script (not yet wired into the pipeline) |
-| [`python/requirements.txt`](./python/requirements.txt) | Python dependencies for the task code |
+| [`python/wgc_poc/qa_summary.py`](./python/wgc_poc/qa_summary.py) | Post-load summary for native and Python results |
+| [`python/requirements.txt`](./python/requirements.txt) | Dependencies for the Python load and QA tasks |
 | [`.github/workflows/validate-pipeline.yml`](./.github/workflows/validate-pipeline.yml) | GitHub Actions job that validates the pipeline on PRs |
-| [`run-pipeline.yml`](./run-pipeline.yml) | Snippet for triggering the pipeline from GitHub Actions |
+| [`.github/workflows/run-pipeline.yml`](./.github/workflows/run-pipeline.yml) | Manually triggered GitHub Actions workflow for running the pipeline |
 | [`.claude/skills/`](./.claude/skills/) | Claude Code skills for working on this repo (see below) |
 
 ## What the pipeline does
@@ -70,41 +73,60 @@ pip install orchestra-cli
 orchestra login
 ```
 
-### Validate
+### First-time setup: validate, push, then import
+
+**Import is the final one-time setup step before the first run.** Do these
+steps in order:
+
+1. Confirm the GCS, BigQuery, and Python connections exist in Orchestra.
+2. Validate the pipeline locally:
 
 ```sh
 orchestra pipeline validate ./orchestra/wgc-reported-volume-poc.yaml
 ```
 
-### Import (first time only)
-
-Push the validated YAML to the GitHub repository connected to your Orchestra
-workspace, then:
+3. Commit and push the validated YAML to the GitHub repository connected to
+   your Orchestra workspace.
+4. Import it into Orchestra once:
 
 ```sh
 orchestra pipeline import \
-  --alias wgc-reported-volume \
+  --alias wgc_reported_volume \
   --path ./orchestra/wgc-reported-volume-poc.yaml
 ```
 
-Import creates a new pipeline and returns its ID. Don't repeat it to pick up
-changes, because each import creates another pipeline. The imported pipeline
-reads the YAML from git, so pushing to the tracked branch is enough to update
-it.
+The import registers the Git-backed pipeline and returns its ID. This is the
+last setup step before running the pipeline; it does not execute any tasks.
+Do not repeat the import to publish changes, because each import creates
+another pipeline.
 
-### Run
+### Run after import
 
 ```sh
-orchestra pipeline run --alias wgc-reported-volume \
-  --input country=Ghana --input year=2024
+orchestra pipeline run --alias wgc_reported_volume
 ```
 
 The command waits for the run to finish by default. To read one task's logs,
 use `orchestra task logs --task-run-id <id>`.
+To choose non-default input values, start the run in Orchestra and enter the
+desired `country` and `year`.
 
-To run from GitHub Actions, use the step in [`run-pipeline.yml`](./run-pipeline.yml)
-with an `ORCHESTRA_API_KEY` repository secret and the pipeline ID from the
-import.
+For future changes, edit the YAML and push it to the tracked Git branch; do
+not import the pipeline again.
+
+### Run from GitHub Actions
+
+The manual workflow at
+[`.github/workflows/run-pipeline.yml`](./.github/workflows/run-pipeline.yml)
+can trigger and monitor a run. In the GitHub repository settings, add:
+
+- Repository secret `ORCHESTRA_API_KEY`: an Orchestra API key.
+- Repository variable `ORCHESTRA_PIPELINE_ID`: the UUID printed when the
+  pipeline was imported.
+
+Then open **Actions → Run WGC reported-volume pipeline → Run workflow** and
+enter the country and year. The workflow is manual-only so a code push cannot
+accidentally start a data load.
 
 ## Claude Code skills
 
@@ -117,10 +139,3 @@ also call them by name:
 | `/validate-pipeline` | Validate the YAML and compile the Python code before a commit or PR |
 | `/run-pipeline` | Run the pipeline for a country and year, then summarise the result and any failing task's logs |
 | `/change-load-logic` | Change the load or table schema while keeping the native and Python paths identical |
-
-## Known issues
-
-- `run-pipeline.yml` is a step fragment with inconsistent indentation, not a
-  complete workflow.
-- `qa_summary.py` expects `BQ_DATASET`, `SOURCE_COUNTRY`, `SOURCE_YEAR` and
-  `BQ_CONNECTION_ID`, but no pipeline task runs it yet.
