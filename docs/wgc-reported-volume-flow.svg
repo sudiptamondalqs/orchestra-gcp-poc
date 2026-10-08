@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1090" viewBox="0 0 1120 1090" role="img" aria-labelledby="title description">
+  <title id="title">WGC reported-volume Orchestra pipeline flow</title>
+  <desc id="description">The pipeline checks a CSV in Google Cloud Storage, prepares a BigQuery external table and two destination tables, loads data into separate tables using native BigQuery SQL and Python in parallel, then summarizes and checks the results.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#526174"/>
+    </marker>
+    <style>
+      .title { font: 700 26px Arial, sans-serif; fill: #172033; }
+      .group-title { font: 700 18px Arial, sans-serif; fill: #26364d; }
+      .node-title { font: 700 16px Arial, sans-serif; fill: #172033; }
+      .body { font: 14px Arial, sans-serif; fill: #334155; }
+      .small { font: 13px Arial, sans-serif; fill: #475569; }
+      .group { fill: #f8fafc; stroke: #94a3b8; stroke-width: 2; rx: 18; }
+      .source { fill: #e0f2fe; stroke: #0284c7; stroke-width: 2; rx: 14; }
+      .prep { fill: #eef2ff; stroke: #6366f1; stroke-width: 2; rx: 12; }
+      .native { fill: #ecfdf5; stroke: #059669; stroke-width: 2; rx: 12; }
+      .python { fill: #fff7ed; stroke: #ea580c; stroke-width: 2; rx: 12; }
+      .quality { fill: #fdf2f8; stroke: #db2777; stroke-width: 2; rx: 12; }
+      .arrow { fill: none; stroke: #526174; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1120" height="1090" fill="#ffffff"/>
+  <text x="560" y="42" text-anchor="middle" class="title">WGC reported-volume data pipeline</text>
+
+  <rect x="230" y="70" width="660" height="100" class="source"/>
+  <text x="560" y="101" text-anchor="middle" class="node-title">Source CSV in Google Cloud Storage</text>
+  <text x="560" y="128" text-anchor="middle" class="body">gs://orchestra-gcp-poc/reported_volumes_inputs.csv</text>
+  <text x="560" y="151" text-anchor="middle" class="small">Header row; country/year selected by pipeline inputs</text>
+
+  <path d="M560 170 V205" class="arrow"/>
+  <rect x="300" y="210" width="520" height="80" class="prep"/>
+  <text x="560" y="242" text-anchor="middle" class="node-title">check_file_group</text>
+  <text x="560" y="267" text-anchor="middle" class="body">Confirm the source object exists before continuing</text>
+
+  <path d="M560 290 V330" class="arrow"/>
+  <rect x="55" y="335" width="1010" height="225" class="group"/>
+  <text x="560" y="367" text-anchor="middle" class="group-title">prepare_group — BigQuery preparation tasks run in parallel</text>
+
+  <rect x="85" y="390" width="290" height="125" class="prep"/>
+  <text x="230" y="423" text-anchor="middle" class="node-title">Create or replace</text>
+  <text x="230" y="447" text-anchor="middle" class="body">external table over the CSV</text>
+  <text x="230" y="480" text-anchor="middle" class="small">ext_reported_volumes_inputs</text>
+
+  <rect x="415" y="390" width="290" height="125" class="prep"/>
+  <text x="560" y="423" text-anchor="middle" class="node-title">Ensure native destination</text>
+  <text x="560" y="455" text-anchor="middle" class="body">reported_volumes_raw</text>
+  <text x="560" y="480" text-anchor="middle" class="small">Create table if it does not exist</text>
+
+  <rect x="745" y="390" width="290" height="125" class="prep"/>
+  <text x="890" y="423" text-anchor="middle" class="node-title">Ensure Python destination</text>
+  <text x="890" y="455" text-anchor="middle" class="body">reported_volumes_raw_py</text>
+  <text x="890" y="480" text-anchor="middle" class="small">Create table if it does not exist</text>
+
+  <path d="M230 515 V590 H330 V630" class="arrow"/>
+  <path d="M560 515 V630" class="arrow"/>
+  <path d="M890 515 V590 H790 V630" class="arrow"/>
+
+  <rect x="55" y="635" width="1010" height="190" class="group"/>
+  <text x="560" y="667" text-anchor="middle" class="group-title">load_group — both implementations run in parallel</text>
+
+  <rect x="125" y="690" width="390" height="100" class="native"/>
+  <text x="320" y="724" text-anchor="middle" class="node-title">Native BigQuery task</text>
+  <text x="320" y="752" text-anchor="middle" class="body">MERGE selected slice into reported_volumes_raw</text>
+
+  <rect x="605" y="690" width="390" height="100" class="python"/>
+  <text x="800" y="724" text-anchor="middle" class="node-title">Python task</text>
+  <text x="800" y="752" text-anchor="middle" class="body">Parameterized MERGE into reported_volumes_raw_py</text>
+
+  <path d="M320 790 V850 H560 V875" class="arrow"/>
+  <path d="M800 790 V850 H560 V875" class="arrow"/>
+
+  <rect x="55" y="880" width="1010" height="175" class="group"/>
+  <text x="560" y="912" text-anchor="middle" class="group-title">checks_group — starts after both loads complete</text>
+
+  <rect x="85" y="935" width="290" height="90" class="quality"/>
+  <text x="230" y="968" text-anchor="middle" class="node-title">Python QA summary</text>
+  <text x="230" y="994" text-anchor="middle" class="small">Rows, nulls, quantity totals</text>
+
+  <rect x="415" y="935" width="290" height="90" class="quality"/>
+  <text x="560" y="968" text-anchor="middle" class="node-title">Null-quantity check</text>
+  <text x="560" y="994" text-anchor="middle" class="small">Fail if qty_kg is null in either table</text>
+
+  <rect x="745" y="935" width="290" height="90" class="quality"/>
+  <text x="890" y="968" text-anchor="middle" class="node-title">Native/Python parity check</text>
+  <text x="890" y="994" text-anchor="middle" class="small">Fail if selected rows differ</text>
+
+  <text x="560" y="1078" text-anchor="middle" class="small">Each MERGE replaces only the selected country/year slice in its own table.</text>
+</svg>

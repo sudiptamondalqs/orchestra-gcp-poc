@@ -31,7 +31,18 @@ must have a header row and these columns, in order: `source`, `link`,
 | 1 | `check_file_group` | Confirms the CSV exists in GCS |
 | 2 | `prepare_group` | Creates the external table `ext_reported_volumes_inputs` and makes sure both destination tables exist |
 | 3 | `load_group` | Loads the selected country/year into both tables in parallel |
-| 4 | `checks_group` | Fails if either table has a null `qty_kg`, or if the two tables differ |
+| 4 | `checks_group` | Reports counts for both tables; fails if either table has a null `qty_kg`, or if the two tables differ |
+
+### Pipeline flow chart
+
+![Flowchart of the WGC reported-volume pipeline from GCS input through parallel BigQuery and Python loads to quality checks](docs/wgc-reported-volume-flow.svg)
+
+*Figure: GCS source check → BigQuery preparation → parallel native/Python
+loads → QA and parity checks.*
+
+Both loaders read the external table and independently replace the selected
+country/year slice in their own destination. The checks start only after both
+load tasks complete.
 
 All tables live in the `wgc_reported_volumes_poc` dataset:
 
@@ -73,21 +84,23 @@ pip install orchestra-cli
 orchestra login
 ```
 
-### First-time setup: validate, push, then import
+### First-time setup: validate, push, then import once
 
-**Import is the final one-time setup step before the first run.** Do these
-steps in order:
+Import registers the Git-backed pipeline in Orchestra. It does **not** run the
+pipeline. Do this setup only once:
 
-1. Confirm the GCS, BigQuery, and Python connections exist in Orchestra.
-2. Validate the pipeline locally:
+1. Confirm that the GCS, BigQuery, and Python connections listed above exist
+   in Orchestra and have the required permissions.
+2. From the repository root, validate the local YAML:
 
 ```sh
 orchestra pipeline validate ./orchestra/wgc-reported-volume-poc.yaml
 ```
 
-3. Commit and push the validated YAML to the GitHub repository connected to
-   your Orchestra workspace.
-4. Import it into Orchestra once:
+3. Push the validated pipeline YAML to the GitHub repository/branch connected
+   to Orchestra. Review `git status` and stage only the intended files before
+   committing.
+4. Import the pipeline once from the repository root:
 
 ```sh
 orchestra pipeline import \
@@ -96,37 +109,64 @@ orchestra pipeline import \
 ```
 
 The import registers the Git-backed pipeline and returns its ID. This is the
-last setup step before running the pipeline; it does not execute any tasks.
-Do not repeat the import to publish changes, because each import creates
-another pipeline.
+one-time registration step, not a run. Save the returned pipeline UUID. Do
+not import again for future YAML changes, because every import can create a
+duplicate.
 
-### Run after import
+### Before running an updated pipeline
+
+Because the pipeline is Git-backed, Orchestra uses the YAML from its connected
+GitHub branch. After changing the pipeline or its Python code, review and push
+the intended changes before starting a run:
+
+```sh
+git status --short
+git add README.md orchestra/wgc-reported-volume-poc.yaml \
+  python/requirements.txt python/wgc_poc/qa_summary.py \
+  .github/workflows/
+git diff --cached
+git commit -m "Update WGC reported-volume pipeline"
+git push origin main
+```
+
+Only stage files you intend to publish. If `main` is protected, push a branch
+and merge it through a pull request. Do not run `orchestra pipeline import`
+again for updates.
+
+### Option A: Run from Orchestra
+
+1. Open **Pipelines** in Orchestra and select **WGC reported volume PoC**.
+2. Select **Run** (or **Trigger**) and set `country` and `year` (defaults:
+   `Ghana` and `2024`).
+3. Start the run and watch the task graph. The native and Python load tasks
+   run in parallel; QA and data-quality checks follow.
+4. If a task fails, open its run logs in Orchestra. On success, the output
+   tables are `reported_volumes_raw` and `reported_volumes_raw_py` in the
+   `wgc_reported_volumes_poc` dataset.
+
+To start a run from the CLI instead:
 
 ```sh
 orchestra pipeline run --alias wgc_reported_volume
 ```
 
-The command waits for the run to finish by default. To read one task's logs,
-use `orchestra task logs --task-run-id <id>`.
-To choose non-default input values, start the run in Orchestra and enter the
-desired `country` and `year`.
+The CLI waits for completion by default. This command uses the YAML defaults;
+use Orchestra's UI to enter non-default country/year inputs.
 
-For future changes, edit the YAML and push it to the tracked Git branch; do
-not import the pipeline again.
+### Option B: Run from GitHub Actions
 
-### Run from GitHub Actions
-
-The manual workflow at
+The manual workflow
 [`.github/workflows/run-pipeline.yml`](./.github/workflows/run-pipeline.yml)
-can trigger and monitor a run. In the GitHub repository settings, add:
+starts the same Orchestra pipeline and waits for its result. Before using it,
+open **GitHub → repository Settings → Secrets and variables → Actions** and add:
 
 - Repository secret `ORCHESTRA_API_KEY`: an Orchestra API key.
 - Repository variable `ORCHESTRA_PIPELINE_ID`: the UUID printed when the
-  pipeline was imported.
+  pipeline was imported (not the alias).
 
-Then open **Actions → Run WGC reported-volume pipeline → Run workflow** and
-enter the country and year. The workflow is manual-only so a code push cannot
-accidentally start a data load.
+Then open **Actions → Run WGC reported-volume pipeline → Run workflow**,
+choose the branch containing the pipeline YAML, enter the country and year,
+and start it. The workflow is manual-only; pushes do not trigger data loads.
 
 ## Claude Code skills
 
