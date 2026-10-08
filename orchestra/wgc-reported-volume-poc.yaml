@@ -1,0 +1,337 @@
+version: v1
+name: WGC reported volume PoC
+
+inputs:
+  country:
+    type: string
+    default: Ghana
+  year:
+    type: string
+    default: '2024'
+  notify_email:
+    type: string
+    default: sudipta.mondal@quantspark.com
+
+pipeline:
+  check_file_group:
+    tasks:
+      check_file_present:
+        integration: GCP_CLOUD_STORAGE
+        integration_job: GCP_CLOUD_STORAGE_GET_FILE
+        parameters:
+          bucket_name: orchestra-gcp-poc
+          object_name: reported_volumes_inputs.csv
+          file_encoding: utf-8
+        depends_on: []
+        name: Check file present
+        connection: orchestra_gcp_59732
+    depends_on: []
+    name: Check source file
+
+  prepare_group:
+    tasks:
+      create_external_table:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_QUERY_JOB
+        parameters:
+          query: |
+            CREATE OR REPLACE EXTERNAL TABLE
+              `wgc_reported_volumes_poc.ext_reported_volumes_inputs` (
+                source STRING,
+                link STRING,
+                mine_size STRING,
+                supply_chain STRING,
+                declaration STRING,
+                year STRING,
+                kg STRING,
+                notes STRING,
+                country STRING,
+                weight STRING
+              )
+            OPTIONS (
+              format = 'CSV',
+              uris = ['gs://orchestra-gcp-poc/reported_volumes_inputs.csv'],
+              skip_leading_rows = 1,
+              allow_quoted_newlines = TRUE
+            )
+          set_outputs: false
+          enable_drive_scope: false
+        depends_on: []
+        name: Create CSV external table
+        connection: orchestra_gcp_52611
+
+      ensure_native_table:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_QUERY_JOB
+        parameters:
+          query: |
+            CREATE TABLE IF NOT EXISTS `wgc_reported_volumes_poc.reported_volumes_raw` (
+              source STRING,
+              link STRING,
+              mine_size STRING,
+              supply_chain STRING,
+              declaration STRING,
+              year INT64,
+              qty_kg NUMERIC,
+              notes STRING,
+              country STRING,
+              weight NUMERIC,
+              source_country STRING,
+              source_year INT64,
+              source_uri STRING,
+              loaded_at TIMESTAMP,
+              pipeline_run_id STRING
+            )
+          set_outputs: false
+          enable_drive_scope: false
+        depends_on: []
+        name: Ensure native destination table
+        connection: orchestra_gcp_52611
+
+      ensure_python_table:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_QUERY_JOB
+        parameters:
+          query: |
+            CREATE TABLE IF NOT EXISTS `wgc_reported_volumes_poc.reported_volumes_raw_py` (
+              source STRING,
+              link STRING,
+              mine_size STRING,
+              supply_chain STRING,
+              declaration STRING,
+              year INT64,
+              qty_kg NUMERIC,
+              notes STRING,
+              country STRING,
+              weight NUMERIC,
+              source_country STRING,
+              source_year INT64,
+              source_uri STRING,
+              loaded_at TIMESTAMP,
+              pipeline_run_id STRING
+            )
+          set_outputs: false
+          enable_drive_scope: false
+        depends_on: []
+        name: Ensure Python destination table
+        connection: orchestra_gcp_52611
+    depends_on:
+      - check_file_group
+    name: Prepare source and destinations
+
+  load_group:
+    tasks:
+      load_native:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_QUERY_JOB
+        parameters:
+          query: |
+            MERGE `wgc_reported_volumes_poc.reported_volumes_raw` T
+            USING (
+              SELECT
+                source, link, mine_size, supply_chain, declaration,
+                SAFE_CAST(TRIM(year) AS INT64) AS year,
+                SAFE_CAST(REPLACE(kg, ',', '') AS NUMERIC) AS qty_kg,
+                notes, country,
+                SAFE_CAST(REPLACE(weight, ',', '') AS NUMERIC) AS weight
+              FROM `wgc_reported_volumes_poc.ext_reported_volumes_inputs`
+              WHERE UPPER(TRIM(country)) = UPPER('${{ inputs.country }}')
+                AND SAFE_CAST(TRIM(year) AS INT64) = ${{ inputs.year }}
+            ) S
+            ON FALSE
+            WHEN NOT MATCHED BY SOURCE
+                 AND T.source_country = '${{ inputs.country }}'
+                 AND T.source_year = ${{ inputs.year }}
+              THEN DELETE
+            WHEN NOT MATCHED BY TARGET THEN INSERT (
+              source, link, mine_size, supply_chain, declaration, year, qty_kg,
+              notes, country, weight, source_country, source_year, source_uri,
+              loaded_at, pipeline_run_id
+            ) VALUES (
+              S.source, S.link, S.mine_size, S.supply_chain, S.declaration,
+              S.year, S.qty_kg, S.notes, S.country, S.weight,
+              '${{ inputs.country }}', ${{ inputs.year }},
+              'gs://orchestra-gcp-poc/reported_volumes_inputs.csv',
+              CURRENT_TIMESTAMP(), '${{ ORCHESTRA.PIPELINE_RUN_ID }}'
+            )
+          set_outputs: false
+          enable_drive_scope: false
+        depends_on: []
+        name: Load reported volumes (native BigQuery)
+        connection: orchestra_gcp_52611
+
+      load_python:
+        integration: PYTHON
+        integration_job: PYTHON_EXECUTE_SCRIPT
+        parameters:
+          source: INLINE
+          package_manager: PIP
+          python_version: '3.12'
+          build_command: pip install google-cloud-bigquery orchestra-sdk
+          set_outputs: false
+          environment_variables: |
+            {
+              "BQ_CONNECTION_ID": "orchestra_gcp_52611",
+              "COUNTRY": "${{ inputs.country }}",
+              "YEAR": "${{ inputs.year }}",
+              "SOURCE_URI": "gs://orchestra-gcp-poc/reported_volumes_inputs.csv",
+              "PIPELINE_RUN_ID": "${{ ORCHESTRA.PIPELINE_RUN_ID }}"
+            }
+          code: |
+            import json
+            import os
+
+            from google.cloud import bigquery
+            from google.oauth2 import service_account
+            from orchestra_sdk.orchestra import OrchestraSDK
+
+            orchestra = OrchestraSDK(api_key=os.environ["ORCHESTRA_API_KEY"])
+            bq_connection = orchestra.get_linked_connection(
+                "gcp_big_query",
+                connection_id=os.environ["BQ_CONNECTION_ID"],
+            )
+            service_account_info = bq_connection["service_account_json"]
+            if isinstance(service_account_info, str):
+                service_account_info = json.loads(service_account_info)
+
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info
+            )
+            client = bigquery.Client(
+                project=service_account_info["project_id"],
+                credentials=credentials,
+                location=bq_connection.get("location"),
+            )
+
+            query = """
+            MERGE `wgc_reported_volumes_poc.reported_volumes_raw_py` T
+            USING (
+              SELECT
+                source, link, mine_size, supply_chain, declaration,
+                SAFE_CAST(TRIM(year) AS INT64) AS year,
+                SAFE_CAST(REPLACE(kg, ',', '') AS NUMERIC) AS qty_kg,
+                notes, country,
+                SAFE_CAST(REPLACE(weight, ',', '') AS NUMERIC) AS weight
+              FROM `wgc_reported_volumes_poc.ext_reported_volumes_inputs`
+              WHERE UPPER(TRIM(country)) = UPPER(@country)
+                AND SAFE_CAST(TRIM(year) AS INT64) = @year
+            ) S
+            ON FALSE
+            WHEN NOT MATCHED BY SOURCE
+                 AND T.source_country = @country
+                 AND T.source_year = @year
+              THEN DELETE
+            WHEN NOT MATCHED BY TARGET THEN INSERT (
+              source, link, mine_size, supply_chain, declaration, year, qty_kg,
+              notes, country, weight, source_country, source_year, source_uri,
+              loaded_at, pipeline_run_id
+            ) VALUES (
+              S.source, S.link, S.mine_size, S.supply_chain, S.declaration,
+              S.year, S.qty_kg, S.notes, S.country, S.weight,
+              @country, @year, @source_uri, CURRENT_TIMESTAMP(), @pipeline_run_id
+            )
+            """
+            job_config = bigquery.QueryJobConfig(
+                use_legacy_sql=False,
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(
+                        "country", "STRING", os.environ["COUNTRY"]
+                    ),
+                    bigquery.ScalarQueryParameter(
+                        "year", "INT64", int(os.environ["YEAR"])
+                    ),
+                    bigquery.ScalarQueryParameter(
+                        "source_uri", "STRING", os.environ["SOURCE_URI"]
+                    ),
+                    bigquery.ScalarQueryParameter(
+                        "pipeline_run_id", "STRING", os.environ["PIPELINE_RUN_ID"]
+                    ),
+                ],
+            )
+            job = client.query(query, job_config=job_config)
+            job.result()
+            print(
+                f"BigQuery job {job.job_id} completed; "
+                f"rows affected: {job.num_dml_affected_rows}"
+            )
+        depends_on: []
+        name: Load reported volumes (Python)
+        connection: python_wgc_70839
+    depends_on:
+      - prepare_group
+    name: Load both implementations in parallel
+
+  checks_group:
+    tasks:
+      dq_no_null_qty:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_TEST
+        parameters:
+          query: |
+            SELECT 'native' AS implementation
+            FROM `wgc_reported_volumes_poc.reported_volumes_raw`
+            WHERE source_country = '${{ inputs.country }}'
+              AND source_year = ${{ inputs.year }}
+              AND qty_kg IS NULL
+            UNION ALL
+            SELECT 'python' AS implementation
+            FROM `wgc_reported_volumes_poc.reported_volumes_raw_py`
+            WHERE source_country = '${{ inputs.country }}'
+              AND source_year = ${{ inputs.year }}
+              AND qty_kg IS NULL
+          error_threshold_expression: "> 0"
+          warn_threshold_expression: "> 0"
+          enable_drive_scope: false
+        depends_on: []
+        name: No null quantities in either table
+        connection: orchestra_gcp_52611
+
+      dq_native_vs_python:
+        integration: GCP_BIG_QUERY
+        integration_job: GCP_BQ_RUN_TEST
+        parameters:
+          query: |
+            WITH native AS (
+              SELECT source, link, year, qty_kg, country, weight
+              FROM `wgc_reported_volumes_poc.reported_volumes_raw`
+              WHERE source_country = '${{ inputs.country }}'
+                AND source_year = ${{ inputs.year }}
+            ), python AS (
+              SELECT source, link, year, qty_kg, country, weight
+              FROM `wgc_reported_volumes_poc.reported_volumes_raw_py`
+              WHERE source_country = '${{ inputs.country }}'
+                AND source_year = ${{ inputs.year }}
+            )
+            SELECT * FROM (SELECT * FROM native EXCEPT DISTINCT SELECT * FROM python)
+            UNION ALL
+            SELECT * FROM (SELECT * FROM python EXCEPT DISTINCT SELECT * FROM native)
+          error_threshold_expression: "> 0"
+          warn_threshold_expression: "> 0"
+          enable_drive_scope: false
+        depends_on: []
+        name: Native and Python parity
+        connection: orchestra_gcp_52611
+    depends_on:
+      - load_group
+    name: Compare the two tables
+
+webhook:
+  enabled: false
+
+alerts:
+  - name: WGC run failed
+    statuses: [FAILED, WARNING]
+    destinations:
+      - integration: EMAIL
+        destination: ${{ inputs.notify_email }}
+  - name: WGC run succeeded
+    statuses: [SUCCEEDED]
+    destinations:
+      - integration: EMAIL
+        destination: ${{ inputs.notify_email }}
+
+anomalies:
+  - type: pipeline_duration_above_baseline
+    destinations:
+      - integration: EMAIL
+        destination: ${{ inputs.notify_email }}

@@ -1,0 +1,39 @@
+name: Validate Orchestra pipeline
+on:
+  pull_request:
+    branches: [main]
+    paths: ["orchestra/**", "python/**"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions: {contents: read, pull-requests: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Compile Python task code
+        run: |
+          pip install -r python/requirements.txt
+          python -m compileall -q python/wgc_poc
+      - name: Install yq
+        run: |
+          sudo wget -q https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+      - name: Validate pipeline YAML
+        run: |
+          set -e
+          yq -o=json '.' orchestra/wgc-reported-volume-poc.yaml > pipeline.json
+          CODE=$(curl -s -w "%{http_code}" -o response.json -X POST \
+            https://app.getorchestra.io/api/engine/public/pipelines/schema \
+            -H "Content-Type: application/json" --data-binary @pipeline.json)
+          if [ "$CODE" -ne 200 ]; then echo "Validation failed:"; cat response.json; exit 1; fi
+          echo "Pipeline schema is valid"
+      - name: Comment on PR if validation failed
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          BODY=$(printf ':x: Orchestra pipeline validation failed:\n\n```json\n%s\n```' "$(cat response.json)")
+          gh pr comment "$PR_URL" --body "$BODY"
