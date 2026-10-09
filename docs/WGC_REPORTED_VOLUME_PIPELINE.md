@@ -77,7 +77,8 @@ appending duplicates.
 | `python_wgc_70839` | Python | Run the Python implementation and post-load summary |
 
 The BigQuery identity must be able to read the source object and create/query
-tables in the target dataset. The Python tasks must have the packages in `python/requirements.txt` available.
+tables in the target dataset. The Python tasks must have the packages in
+[`../python/requirements.txt`](../python/requirements.txt) available.
 They also need Orchestra SDK access to read the linked BigQuery connection and
 submit BigQuery jobs. Keep API keys and service-account credentials in
 Orchestra connections or secrets, never in the YAML or Git.

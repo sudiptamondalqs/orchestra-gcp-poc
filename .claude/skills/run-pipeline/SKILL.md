@@ -5,7 +5,7 @@ description: Run the WGC reported-volume Orchestra pipeline for a country and ye
 
 # Run the pipeline
 
-The pipeline is imported in Orchestra with alias `wgc-reported-volume`. It
+The pipeline is imported in Orchestra with alias `wgc_reported_volume`. It
 takes `country` (default `Ghana`) and `year` (default `2024`) inputs.
 
 1. Confirm the country and year with the user if they didn't give them. A run
@@ -15,12 +15,12 @@ takes `country` (default `Ghana`) and `year` (default `2024`) inputs.
 2. Make sure the YAML is valid first (use the `validate-pipeline` skill) if it
    changed in this session. The imported pipeline runs the YAML from git, so
    uncommitted or unpushed changes won't be in the run. Say so if the working
-   tree has changes under `orchestra/`.
+   tree has changes under `orchestra/` or `python/`.
 
 3. Run it:
 
    ```sh
-   orchestra pipeline run --alias wgc-reported-volume \
+   orchestra pipeline run --alias wgc_reported_volume \
      --input country=<Country> --input year=<Year>
    ```
 

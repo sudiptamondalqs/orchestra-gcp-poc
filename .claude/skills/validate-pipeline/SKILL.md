@@ -1,6 +1,6 @@
 ---
 name: validate-pipeline
-description: Validate the WGC Orchestra pipeline YAML and compile the Python task code. Use before committing or opening a PR that touches orchestra/ or python/, or when the user asks to check, lint or validate the pipeline.
+description: Validate the WGC Orchestra pipeline YAML and compile the Python task code. Use before committing or opening a PR that touches orchestra/ or python/, or when the user asks to check, lint or validate the WGC pipeline.
 ---
 
 # Validate the pipeline

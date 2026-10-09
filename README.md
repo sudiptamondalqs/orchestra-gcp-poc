@@ -1,4 +1,4 @@
-# orchestra-gcp-poc
+# WGC reported-volume pipeline
 
 A proof of concept that uses [Orchestra](https://www.getorchestra.io/) to load
 the WGC reported-volumes CSV from Cloud Storage into BigQuery. The load runs
@@ -15,9 +15,9 @@ current status, and next steps.
 | [`orchestra/wgc-reported-volume-poc.yaml`](./orchestra/wgc-reported-volume-poc.yaml) | Orchestra pipeline definition |
 | [`python/wgc_poc/qa_summary.py`](./python/wgc_poc/qa_summary.py) | Post-load summary for native and Python results |
 | [`python/requirements.txt`](./python/requirements.txt) | Dependencies for the Python load and QA tasks |
-| [`.github/workflows/validate-pipeline.yml`](./.github/workflows/validate-pipeline.yml) | GitHub Actions job that validates the pipeline on PRs |
-| [`.github/workflows/run-pipeline.yml`](./.github/workflows/run-pipeline.yml) | Manually triggered GitHub Actions workflow for running the pipeline |
-| [`.claude/skills/`](./.claude/skills/) | Claude Code skills for working on this repo (see below) |
+| [WGC validator workflow](./.github/workflows/validate-pipeline.yml) | GitHub Actions job that validates WGC changes on PRs |
+| [WGC run workflow](./.github/workflows/run-pipeline.yml) | Manually triggered GitHub Actions workflow |
+| [Claude Code skills](./.claude/skills/) | WGC-focused project skills |
 
 ## What the pipeline does
 
@@ -113,6 +113,10 @@ one-time registration step, not a run. Save the returned pipeline UUID. Do
 not import again for future YAML changes, because every import can create a
 duplicate.
 
+> **Existing pipeline:** its YAML path remains
+> `orchestra/wgc-reported-volume-poc.yaml`, so the existing Git-backed
+> pipeline can continue using the same path. Do not import it again.
+
 ### Before running an updated pipeline
 
 Because the pipeline is Git-backed, Orchestra uses the YAML from its connected
@@ -121,9 +125,7 @@ the intended changes before starting a run:
 
 ```sh
 git status --short
-git add README.md orchestra/wgc-reported-volume-poc.yaml \
-  python/requirements.txt python/wgc_poc/qa_summary.py \
-  .github/workflows/
+git add README.md orchestra/ python/ docs/ .github/ .claude/
 git diff --cached
 git commit -m "Update WGC reported-volume pipeline"
 git push origin main
@@ -170,7 +172,8 @@ and start it. The workflow is manual-only; pushes do not trigger data loads.
 
 ## Claude Code skills
 
-This repo includes project skills in [`.claude/skills/`](./.claude/skills/).
+This repository includes WGC project skills in
+[`.claude/skills/`](./.claude/skills/).
 Claude Code picks them up automatically when you open the repo, and you can
 also call them by name:
 

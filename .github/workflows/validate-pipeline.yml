@@ -2,7 +2,7 @@ name: Validate Orchestra pipeline
 on:
   pull_request:
     branches: [main]
-    paths: ["orchestra/**", "python/**"]
+    paths: ["orchestra/**", "python/**", ".github/workflows/validate-pipeline.yml"]
 
 jobs:
   validate:
